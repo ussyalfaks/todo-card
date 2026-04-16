@@ -12,12 +12,14 @@ const PRIO = {
   medium: { label: 'MED',  cls: 'med',  sym: '◆' },
   low:    { label: 'LOW',  cls: 'low',  sym: '▼' },
 };
+
 const STATUS = {
+  'pending':     { label: 'Pending',     cls: 's-muted' },
   'in-progress': { label: 'In Progress', cls: 's-blue'  },
-  'todo':        { label: 'To Do',       cls: 's-muted' },
-  'blocked':     { label: 'Blocked',     cls: 's-red'   },
   'done':        { label: 'Done',        cls: 's-green' },
 };
+
+const COLLAPSE_THRESHOLD = 150;
 
 const SVG = {
   check: `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.8" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>`,
@@ -25,36 +27,53 @@ const SVG = {
   trash: `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg>`,
   cal:   `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>`,
   clock: `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>`,
+  chevronDown: `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>`,
+  chevronUp:   `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="18 15 12 9 6 15"/></svg>`,
 };
 
 function fmtDue(d) {
   return 'Due ' + d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
 }
-function fmtRemaining(d) {
+
+function fmtRemaining(d, isDone) {
+  if (isDone) return 'Completed';
   const now = Date.now(), diff = d - now;
-  const abs = Math.abs(diff);
+  const abs  = Math.abs(diff);
   const mins = Math.floor(abs / 60000);
   const hrs  = Math.floor(abs / 3600000);
   const days = Math.floor(abs / 86400000);
   if (diff < 0) {
-    if (mins < 60) return `Overdue by ${mins}m`;
-    if (hrs  < 24) return `Overdue by ${hrs}h`;
-    return `Overdue by ${days}d`;
+    if (mins < 60) return `Overdue by ${mins} minute${mins !== 1 ? 's' : ''}`;
+    if (hrs  < 24) return `Overdue by ${hrs} hour${hrs !== 1 ? 's' : ''}`;
+    return `Overdue by ${days} day${days !== 1 ? 's' : ''}`;
   }
-  if (mins < 60) return `Due in ${mins}m`;
-  if (hrs  < 24) return `Due in ${hrs}h`;
-  if (days === 1) return `Due tomorrow`;
+  if (mins < 60) return `Due in ${mins} minute${mins !== 1 ? 's' : ''}`;
+  if (hrs  < 24) return `Due in ${hrs} hour${hrs !== 1 ? 's' : ''}`;
+  if (days === 1) return 'Due tomorrow';
   return `Due in ${days} days`;
 }
 
+function toDateInputValue(d) {
+  const year  = d.getFullYear();
+  const month = String(d.getMonth() + 1).padStart(2, '0');
+  const day   = String(d.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
 let state = {
-  title:      TASK.title,
-  description: TASK.description,
-  completed:  false,
-  editing:    false,
-  deleted:    false,
-  editTitle:  TASK.title,
-  editDesc:   TASK.description,
+  title:        TASK.title,
+  description:  TASK.description,
+  priority:     TASK.priority,
+  status:       TASK.status,
+  dueDate:      TASK.dueDate,
+  completed:    TASK.status === 'done',
+  editing:      false,
+  deleted:      false,
+  expanded:     TASK.description.length <= COLLAPSE_THRESHOLD,
+  editTitle:    TASK.title,
+  editDesc:     TASK.description,
+  editPriority: TASK.priority,
+  editDueDate:  new Date(TASK.dueDate),
 };
 
 function render() {
@@ -65,17 +84,29 @@ function render() {
     return;
   }
 
-  const prio    = PRIO[TASK.priority]   || PRIO.medium;
-  const status  = STATUS[TASK.status]   || STATUS.todo;
-  const overdue = TASK.dueDate < new Date() && !state.completed;
-  const cardCls = ['card', overdue ? 'overdue' : '', state.completed ? 'done' : ''].filter(Boolean).join(' ');
-  const timeLabel = fmtRemaining(TASK.dueDate);
+  const prio         = PRIO[state.priority]   || PRIO.medium;
+  const status       = STATUS[state.status]   || STATUS.pending;
+  const isDone       = state.status === 'done';
+  const overdue      = state.dueDate < new Date() && !isDone;
+  const needsCollapse = state.description.length > COLLAPSE_THRESHOLD;
+  const timeLabel    = fmtRemaining(state.dueDate, isDone);
+
+  const cardCls = [
+    'card',
+    overdue ? 'overdue' : '',
+    isDone  ? 'done'    : '',
+    `prio-${state.priority}`,
+    state.status === 'in-progress' ? 'in-progress' : '',
+  ].filter(Boolean).join(' ');
 
   root.innerHTML = `
     <article data-testid="test-todo-card" class="${cardCls}">
 
       <header class="hd">
         <div class="meta">
+          <span data-testid="test-todo-priority-indicator"
+                class="prio-dot prio-dot--${prio.cls}"
+                aria-hidden="true"></span>
           <span data-testid="test-todo-priority"
                 class="badge ${prio.cls}"
                 aria-label="Priority: ${prio.label}">
@@ -91,8 +122,9 @@ function render() {
           <button data-testid="test-todo-edit-button"
                   class="btn${state.editing ? ' active' : ''}"
                   id="btnEdit"
-                  aria-label="${state.editing ? 'Save edits' : 'Edit task'}">
-            ${state.editing ? SVG.check : SVG.edit}
+                  aria-label="Edit task"
+                  aria-pressed="${state.editing}">
+            ${SVG.edit}
           </button>
           <button data-testid="test-todo-delete-button"
                   class="btn del"
@@ -103,47 +135,131 @@ function render() {
         </div>
       </header>
 
+      <div class="status-row">
+        <span class="status-label" id="statusLabel">Status</span>
+        <select data-testid="test-todo-status-control"
+                id="statusControl"
+                class="status-select ${status.cls}"
+                aria-labelledby="statusLabel"
+                aria-label="Change task status">
+          ${Object.entries(STATUS).map(([key, val]) =>
+            `<option value="${key}"${state.status === key ? ' selected' : ''}>${val.label}</option>`
+          ).join('')}
+        </select>
+      </div>
+
+      ${state.editing ? `
+      <form data-testid="test-todo-edit-form"
+            id="editForm"
+            class="edit-form"
+            novalidate>
+        <div class="form-field">
+          <label class="form-label" for="editTitleInp">Title</label>
+          <input data-testid="test-todo-edit-title-input"
+                 id="editTitleInp"
+                 class="edit-title"
+                 type="text"
+                 value="${state.editTitle.replace(/"/g, '&quot;')}"
+                 aria-label="Edit task title" />
+        </div>
+        <div class="form-field">
+          <label class="form-label" for="editDescInp">Description</label>
+          <textarea data-testid="test-todo-edit-description-input"
+                    id="editDescInp"
+                    class="edit-desc"
+                    rows="4"
+                    aria-label="Edit task description">${state.editDesc}</textarea>
+        </div>
+        <div class="form-row">
+          <div class="form-field">
+            <label class="form-label" for="editPriorityInp">Priority</label>
+            <select data-testid="test-todo-edit-priority-select"
+                    id="editPriorityInp"
+                    class="edit-select"
+                    aria-label="Edit task priority">
+              ${Object.entries(PRIO).map(([key, val]) =>
+                `<option value="${key}"${state.editPriority === key ? ' selected' : ''}>${val.label}</option>`
+              ).join('')}
+            </select>
+          </div>
+          <div class="form-field">
+            <label class="form-label" for="editDueDateInp">Due Date</label>
+            <input data-testid="test-todo-edit-due-date-input"
+                   id="editDueDateInp"
+                   class="edit-date"
+                   type="date"
+                   value="${toDateInputValue(state.editDueDate)}"
+                   aria-label="Edit due date" />
+          </div>
+        </div>
+        <div class="form-actions">
+          <button data-testid="test-todo-save-button"
+                  id="btnSave"
+                  type="button"
+                  class="btn-action btn-save">
+            ${SVG.check} Save
+          </button>
+          <button data-testid="test-todo-cancel-button"
+                  id="btnCancel"
+                  type="button"
+                  class="btn-action btn-cancel">
+            Cancel
+          </button>
+        </div>
+      </form>
+      ` : `
       <div class="title-row">
         <label class="cb-wrap" aria-label="Mark task complete">
           <input data-testid="test-todo-complete-toggle"
                  type="checkbox"
                  id="cbToggle"
-                 ${state.completed ? 'checked' : ''} />
+                 ${isDone ? 'checked' : ''} />
           <span class="cb-custom" aria-hidden="true">
-            ${state.completed ? SVG.check : ''}
+            ${isDone ? SVG.check : ''}
           </span>
         </label>
-        ${state.editing
-          ? `<input class="edit-title" id="inpTitle"
-                    value="${state.editTitle.replace(/"/g, '&quot;')}"
-                    aria-label="Edit task title" />`
-          : `<h2 data-testid="test-todo-title" class="title">${state.title}</h2>`
-        }
+        <h2 data-testid="test-todo-title" class="title">${state.title}</h2>
       </div>
 
-      ${state.editing
-        ? `<textarea class="edit-desc" id="inpDesc"
-                     rows="3"
-                     aria-label="Edit task description">${state.editDesc}</textarea>`
-        : `<p data-testid="test-todo-description" class="desc">${state.description}</p>`
-      }
+      <div data-testid="test-todo-collapsible-section"
+           id="collapsibleSection"
+           class="collapsible${state.expanded || !needsCollapse ? ' expanded' : ''}">
+        <p data-testid="test-todo-description" class="desc">${state.description}</p>
+      </div>
+
+      ${needsCollapse ? `
+      <button data-testid="test-todo-expand-toggle"
+              id="btnExpand"
+              class="expand-toggle"
+              type="button"
+              aria-expanded="${state.expanded}"
+              aria-controls="collapsibleSection">
+        ${state.expanded ? SVG.chevronUp + ' Show less' : SVG.chevronDown + ' Show more'}
+      </button>
+      ` : ''}
+      `}
 
       <div class="divider"></div>
 
       <div class="dates">
         <time data-testid="test-todo-due-date"
-              datetime="${TASK.dueDate.toISOString()}"
-              aria-label="${fmtDue(TASK.dueDate)}">
-          ${SVG.cal} ${fmtDue(TASK.dueDate)}
+              datetime="${state.dueDate.toISOString()}"
+              aria-label="${fmtDue(state.dueDate)}">
+          ${SVG.cal} ${fmtDue(state.dueDate)}
         </time>
         <time data-testid="test-todo-time-remaining"
               id="timeRemaining"
-              datetime="${TASK.dueDate.toISOString()}"
+              datetime="${state.dueDate.toISOString()}"
               class="${overdue ? 'overdue' : ''}"
               aria-live="polite"
               aria-label="${timeLabel}">
-          ${SVG.clock} ${timeLabel}
+          ${isDone ? SVG.check + ' Completed' : SVG.clock + ' ' + timeLabel}
         </time>
+        ${overdue ? `
+        <span data-testid="test-todo-overdue-indicator"
+              class="overdue-badge"
+              role="alert">Overdue</span>
+        ` : ''}
       </div>
 
       <ul data-testid="test-todo-tags" class="tags" role="list" aria-label="Categories">
@@ -155,22 +271,17 @@ function render() {
     </article>
   `;
 
-  /* — wire up events — */
+  /* — wire events — */
+
   document.getElementById('btnEdit').addEventListener('click', () => {
-    if (state.editing) {
-      const t = document.getElementById('inpTitle');
-      const d = document.getElementById('inpDesc');
-      state.title       = (t && t.value.trim()) || state.title;
-      state.description = (d && d.value.trim()) || state.description;
-      state.editTitle   = state.title;
-      state.editDesc    = state.description;
-    }
-    state.editing = !state.editing;
+    state.editTitle    = state.title;
+    state.editDesc     = state.description;
+    state.editPriority = state.priority;
+    state.editDueDate  = new Date(state.dueDate);
+    state.editing      = true;
     render();
-    if (state.editing) {
-      const t = document.getElementById('inpTitle');
-      if (t) t.focus();
-    }
+    const inp = document.getElementById('editTitleInp');
+    if (inp) inp.focus();
   });
 
   document.getElementById('btnDel').addEventListener('click', () => {
@@ -178,25 +289,65 @@ function render() {
     render();
   });
 
-  const cb = document.getElementById('cbToggle');
-  cb.addEventListener('change', () => {
-    const wasUnchecked = !state.completed;
-    state.completed = cb.checked;
+  document.getElementById('statusControl').addEventListener('change', e => {
+    state.status    = e.target.value;
+    state.completed = state.status === 'done';
     render();
-    if (wasUnchecked) {
-      const card = document.querySelector('.card');
-      if (card) {
-        card.classList.add('just-done');
-        setTimeout(() => card.classList.remove('just-done'), 1800);
-      }
-    }
   });
 
   if (state.editing) {
-    const t = document.getElementById('inpTitle');
-    const d = document.getElementById('inpDesc');
-    if (t) t.addEventListener('input', e => { state.editTitle = e.target.value; });
-    if (d) d.addEventListener('input', e => { state.editDesc  = e.target.value; });
+    const titleInp = document.getElementById('editTitleInp');
+    const descInp  = document.getElementById('editDescInp');
+    const prioInp  = document.getElementById('editPriorityInp');
+    const dateInp  = document.getElementById('editDueDateInp');
+
+    titleInp.addEventListener('input',  e => { state.editTitle    = e.target.value; });
+    descInp.addEventListener('input',   e => { state.editDesc     = e.target.value; });
+    prioInp.addEventListener('change',  e => { state.editPriority = e.target.value; });
+    dateInp.addEventListener('change',  e => {
+      const d = new Date(e.target.value + 'T00:00:00');
+      if (!isNaN(d)) state.editDueDate = d;
+    });
+
+    document.getElementById('btnSave').addEventListener('click', () => {
+      state.title       = state.editTitle.trim()  || state.title;
+      state.description = state.editDesc.trim()   || state.description;
+      state.priority    = state.editPriority;
+      state.dueDate     = state.editDueDate;
+      state.expanded    = state.description.length <= COLLAPSE_THRESHOLD;
+      state.editing     = false;
+      render();
+      document.getElementById('btnEdit').focus();
+    });
+
+    document.getElementById('btnCancel').addEventListener('click', () => {
+      state.editing = false;
+      render();
+      document.getElementById('btnEdit').focus();
+    });
+
+  } else {
+    const cb = document.getElementById('cbToggle');
+    cb.addEventListener('change', () => {
+      state.completed = cb.checked;
+      state.status    = cb.checked ? 'done' : 'pending';
+      render();
+      if (cb.checked) {
+        const card = document.querySelector('.card');
+        if (card) {
+          card.classList.add('just-done');
+          setTimeout(() => card.classList.remove('just-done'), 1800);
+        }
+      }
+    });
+
+    const expandBtn = document.getElementById('btnExpand');
+    if (expandBtn) {
+      expandBtn.addEventListener('click', () => {
+        state.expanded = !state.expanded;
+        render();
+      });
+    }
   }
 }
 
@@ -204,12 +355,31 @@ render();
 
 /* — tick every 30s — */
 setInterval(() => {
+  if (state.editing) return;
   const el = document.getElementById('timeRemaining');
   if (!el) return;
-  const label = fmtRemaining(TASK.dueDate);
-  const overdue = TASK.dueDate < new Date() && !state.completed;
-  el.textContent = '';
-  el.insertAdjacentHTML('beforeend', SVG.clock + ' ' + label);
+  const isDone  = state.status === 'done';
+  const overdue = state.dueDate < new Date() && !isDone;
+  const label   = fmtRemaining(state.dueDate, isDone);
+  el.innerHTML  = isDone ? SVG.check + ' Completed' : SVG.clock + ' ' + label;
   el.setAttribute('aria-label', label);
-  el.className = overdue ? 'overdue' : '';
+  el.className  = overdue ? 'overdue' : '';
+
+  const card = document.querySelector('[data-testid="test-todo-card"]');
+  if (card) {
+    card.classList.toggle('overdue', overdue);
+  }
+
+  const datesDiv = el.closest('.dates');
+  const existingBadge = document.querySelector('[data-testid="test-todo-overdue-indicator"]');
+  if (overdue && !existingBadge && datesDiv) {
+    const badge = document.createElement('span');
+    badge.setAttribute('data-testid', 'test-todo-overdue-indicator');
+    badge.className = 'overdue-badge';
+    badge.setAttribute('role', 'alert');
+    badge.textContent = 'Overdue';
+    datesDiv.appendChild(badge);
+  } else if (!overdue && existingBadge) {
+    existingBadge.remove();
+  }
 }, 30000);

@@ -64,6 +64,7 @@ body::after {
   width: min(510px, 100%);
   background: var(--surface);
   border: 1px solid var(--border);
+  border-left: 3px solid var(--border);
   border-radius: var(--r);
   padding: 1.5rem;
   display: flex;
@@ -74,11 +75,18 @@ body::after {
   animation: cardIn .5s cubic-bezier(.22,1,.36,1) both;
 }
 .card:hover {
-  border-color: var(--border2);
   box-shadow: 0 12px 56px rgba(0,0,0,0.55);
 }
-.card.overdue  { border-color: rgba(255,95,87,.22); }
-.card.done     { opacity: .58; }
+
+/* Priority left-border accent */
+.card.prio-high   { border-left-color: var(--red);   }
+.card.prio-medium { border-left-color: var(--amber); }
+.card.prio-low    { border-left-color: var(--green); }
+
+/* Status visual states */
+.card.overdue     { border-color: rgba(255,95,87,.3); }
+.card.done        { opacity: .58; }
+.card.in-progress { border-top: 2px solid rgba(77,168,255,.35); }
 
 @keyframes cardIn {
   from { opacity: 0; transform: translateY(16px) scale(.98); }
@@ -94,6 +102,17 @@ body::after {
 /* ── Header ────────────────────────────────────── */
 .hd   { display: flex; align-items: center; gap: .5rem; }
 .meta { display: flex; align-items: center; gap: .45rem; flex: 1; flex-wrap: wrap; }
+
+/* ── Priority indicator dot ────────────────────── */
+.prio-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+.prio-dot--high   { background: var(--red);   box-shadow: 0 0 5px rgba(255,95,87,.6);    }
+.prio-dot--med    { background: var(--amber); box-shadow: 0 0 5px rgba(245,166,35,.6);   }
+.prio-dot--low    { background: var(--green); box-shadow: 0 0 5px rgba(61,220,132,.6);   }
 
 /* ── Priority badge ────────────────────────────── */
 .badge {
@@ -113,7 +132,7 @@ body::after {
 .badge.med   { background: var(--amber-bg); color: var(--amber); border-color: rgba(245,166,35,.2); }
 .badge.low   { background: var(--green-bg); color: var(--green); border-color: rgba(61,220,132,.2); }
 
-/* ── Status ────────────────────────────────────── */
+/* ── Status display ────────────────────────────── */
 .status {
   font-family: 'DM Mono', monospace;
   font-size: .66rem;
@@ -130,6 +149,41 @@ body::after {
 .status.s-muted { color: var(--txt3);  }
 .status.s-blue .pip { box-shadow: 0 0 5px var(--blue); animation: blink 2s ease-in-out infinite; }
 @keyframes blink { 0%,100%{opacity:1} 50%{opacity:.35} }
+
+/* ── Status control row ────────────────────────── */
+.status-row {
+  display: flex;
+  align-items: center;
+  gap: .55rem;
+}
+.status-label {
+  font-family: 'DM Mono', monospace;
+  font-size: .65rem;
+  color: var(--txt3);
+  text-transform: uppercase;
+  letter-spacing: .08em;
+  flex-shrink: 0;
+}
+.status-select {
+  font-family: 'DM Mono', monospace;
+  font-size: .66rem;
+  letter-spacing: .05em;
+  text-transform: uppercase;
+  background: var(--surface2);
+  border: 1px solid var(--border2);
+  border-radius: var(--rxs);
+  padding: .2rem .5rem;
+  cursor: pointer;
+  outline: none;
+  appearance: none;
+  -webkit-appearance: none;
+  transition: border-color .18s, box-shadow .18s;
+}
+.status-select.s-blue  { color: var(--blue);  border-color: rgba(77,168,255,.28);   }
+.status-select.s-green { color: var(--green); border-color: rgba(61,220,132,.28);   }
+.status-select.s-muted { color: var(--txt2);  }
+.status-select:focus   { box-shadow: 0 0 0 3px rgba(77,168,255,.15); }
+.status-select option  { background: #1a1a24; color: var(--txt); text-transform: none; }
 
 /* ── Action buttons ────────────────────────────── */
 .actions { display: flex; gap: .28rem; margin-left: auto; }
@@ -163,8 +217,8 @@ body::after {
   transition: all .2s cubic-bezier(.22,1,.36,1);
   color: var(--green);
 }
-.cb-wrap:hover .cb-custom       { border-color: var(--green); background: var(--green-bg); }
-.cb-wrap input:checked ~ .cb-custom { background: var(--green); border-color: var(--green); color: #0c0c12; }
+.cb-wrap:hover .cb-custom              { border-color: var(--green); background: var(--green-bg); }
+.cb-wrap input:checked ~ .cb-custom    { background: var(--green); border-color: var(--green); color: #0c0c12; }
 .cb-wrap input:focus-visible ~ .cb-custom { outline: 2px solid var(--blue); outline-offset: 2px; }
 
 /* ── Title ─────────────────────────────────────── */
@@ -180,7 +234,25 @@ h2.title {
 }
 .card.done h2.title { text-decoration: line-through; color: var(--txt3); }
 
-/* ── Description ───────────────────────────────── */
+/* ── Description collapsible ───────────────────── */
+.collapsible {
+  overflow: hidden;
+  max-height: 3.8em;
+  position: relative;
+  transition: max-height .3s cubic-bezier(.22,1,.36,1);
+}
+.collapsible.expanded {
+  max-height: 600px;
+}
+.collapsible:not(.expanded)::after {
+  content: '';
+  position: absolute;
+  bottom: 0; left: 0; right: 0;
+  height: 1.5em;
+  background: linear-gradient(transparent, var(--surface));
+  pointer-events: none;
+}
+
 p.desc {
   font-family: 'DM Mono', monospace;
   font-size: .76rem;
@@ -190,7 +262,59 @@ p.desc {
   padding-left: calc(20px + .75rem);
 }
 
-/* ── Edit inputs ───────────────────────────────── */
+/* ── Expand toggle ─────────────────────────────── */
+.expand-toggle {
+  font-family: 'DM Mono', monospace;
+  font-size: .68rem;
+  letter-spacing: .04em;
+  color: var(--txt3);
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: .3rem;
+  padding: .1rem 0;
+  padding-left: calc(20px + .75rem);
+  transition: color .18s;
+  margin-top: -.25rem;
+}
+.expand-toggle:hover { color: var(--txt2); }
+.expand-toggle:focus-visible {
+  outline: 2px solid var(--blue);
+  outline-offset: 2px;
+  border-radius: 3px;
+}
+
+/* ── Edit form ─────────────────────────────────── */
+.edit-form {
+  display: flex;
+  flex-direction: column;
+  gap: .8rem;
+}
+.form-field {
+  display: flex;
+  flex-direction: column;
+  gap: .3rem;
+}
+.form-label {
+  font-family: 'DM Mono', monospace;
+  font-size: .65rem;
+  color: var(--txt3);
+  text-transform: uppercase;
+  letter-spacing: .08em;
+}
+.form-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: .75rem;
+}
+.form-actions {
+  display: flex;
+  gap: .5rem;
+  padding-top: .1rem;
+}
+
 .edit-title {
   font-family: 'Syne', sans-serif;
   font-size: 1rem;
@@ -201,7 +325,7 @@ p.desc {
   color: var(--txt);
   padding: .38rem .55rem;
   outline: none;
-  flex: 1;
+  width: 100%;
 }
 .edit-desc {
   font-family: 'DM Mono', monospace;
@@ -215,16 +339,64 @@ p.desc {
   padding: .38rem .55rem;
   outline: none;
   resize: vertical;
-  width: calc(100% - 20px - .75rem);
-  margin-left: calc(20px + .75rem);
+  width: 100%;
+}
+.edit-select,
+.edit-date {
+  font-family: 'DM Mono', monospace;
+  font-size: .76rem;
+  background: var(--surface2);
+  border: 1px solid var(--amber);
+  border-radius: var(--rxs);
+  color: var(--txt);
+  padding: .38rem .55rem;
+  outline: none;
+  width: 100%;
+  appearance: none;
+  -webkit-appearance: none;
 }
 .edit-title:focus,
-.edit-desc:focus { box-shadow: 0 0 0 3px rgba(245,166,35,.15); }
+.edit-desc:focus,
+.edit-select:focus,
+.edit-date:focus { box-shadow: 0 0 0 3px rgba(245,166,35,.15); }
+
+.edit-select option,
+.status-select option { background: #1a1a24; color: var(--txt); }
+
+/* ── Save / Cancel buttons ─────────────────────── */
+.btn-action {
+  font-family: 'DM Mono', monospace;
+  font-size: .74rem;
+  font-weight: 500;
+  padding: .4rem .9rem;
+  border-radius: var(--rxs);
+  border: 1px solid transparent;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: .4rem;
+  transition: all .18s;
+  letter-spacing: .04em;
+}
+.btn-save {
+  background: var(--green-bg);
+  color: var(--green);
+  border-color: rgba(61,220,132,.28);
+}
+.btn-save:hover  { background: rgba(61,220,132,.16); }
+.btn-save:focus-visible { outline: 2px solid var(--green); outline-offset: 2px; }
+.btn-cancel {
+  background: transparent;
+  color: var(--txt3);
+  border-color: var(--border);
+}
+.btn-cancel:hover { background: var(--surface2); color: var(--txt); border-color: var(--border2); }
+.btn-cancel:focus-visible { outline: 2px solid var(--blue); outline-offset: 2px; }
 
 /* ── Divider ───────────────────────────────────── */
 .divider { height: 1px; background: var(--border); }
 
-/* ── Dates ─────────────────────────────────────── */
+/* ── Dates row ─────────────────────────────────── */
 .dates { display: flex; align-items: center; gap: 1.2rem; flex-wrap: wrap; }
 time {
   font-family: 'DM Mono', monospace;
@@ -235,6 +407,21 @@ time {
   gap: .38rem;
 }
 time.overdue { color: var(--red); }
+
+/* ── Overdue badge ─────────────────────────────── */
+.overdue-badge {
+  font-family: 'DM Mono', monospace;
+  font-size: .63rem;
+  font-weight: 500;
+  letter-spacing: .1em;
+  text-transform: uppercase;
+  background: var(--red-bg);
+  color: var(--red);
+  border: 1px solid rgba(255,95,87,.25);
+  border-radius: var(--rxs);
+  padding: .15rem .45rem;
+  animation: fadeIn .3s ease;
+}
 
 /* ── Tags ──────────────────────────────────────── */
 ul.tags { display: flex; flex-wrap: wrap; gap: .38rem; list-style: none; }
